@@ -2,6 +2,7 @@ import os
 import tarfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import pathlib
 
 from .errors import SquashError
 from .utils import normalize_abs
@@ -23,6 +24,95 @@ def _file_should_be_skipped(name: str, to_skip: List[List[str]]) -> int:
                 return layer_nb
         layer_nb += 1
     return 0
+
+
+def _files_in_layers(
+    root: Path, oci: bool, layer_ids: List[str]
+) -> Dict[str, List[str]]:
+    """Build a mapping of layer_id -> normalized file paths contained in that layer tar.
+
+    Only non-empty (real) layers are considered.
+    """
+    files: Dict[str, List[str]] = {}
+    for layer_id in layer_ids:
+        if layer_id.startswith("<missing-"):
+            continue
+        layer_tar_path = _layer_tar_path(root, oci, layer_id)
+        if not layer_tar_path.exists():
+            continue
+        with tarfile.open(layer_tar_path, "r", format=tarfile.PAX_FORMAT) as tar:
+            files[layer_id] = [normalize_abs(n) for n in tar.getnames()]
+    return files
+
+
+def _path_hierarchy(path: str) -> List[str]:
+    p = pathlib.PurePath(path)
+    if len(p.parts) == 1:
+        return list(p.parts)
+    head = []
+    acc: List[str] = []
+    for part in p.parts[:-1]:
+        head = [*head, part]
+        acc.append(str(pathlib.PurePath(*head)))
+    return acc
+
+
+def _reduce_markers(markers: Dict[tarfile.TarInfo, tarfile.ExFileObject]) -> None:
+    """Reduce marker files to a minimal necessary set in-place.
+
+    Removes a marker if a higher-level marker (covering its parent directory)
+    is also present.
+    """
+    if not markers:
+        return
+    marked_files = [normalize_abs(m.name.replace(".wh.", "")) for m in markers.keys()]
+    to_remove: List[tarfile.TarInfo] = []
+    for marker in list(markers.keys()):
+        path = normalize_abs(marker.name.replace(".wh.", ""))
+        for directory in _path_hierarchy(path):
+            if directory in marked_files:
+                to_remove.append(marker)
+                break
+    for marker in to_remove:
+        markers.pop(marker, None)
+
+
+def _add_markers(
+    markers: Dict[tarfile.TarInfo, tarfile.ExFileObject],
+    squashed_tar: tarfile.TarFile,
+    files_in_layers: Dict[str, List[str]],
+    added_symlinks: List[List[str]],
+) -> None:
+    """Add back necessary whiteout marker files to the squashed tar.
+
+    Only add a marker if the referenced file exists in any of the preserved layers
+    and it wasn't already added or on a symlink path to skip.
+    """
+    if not markers:
+        return
+    existing_files = [normalize_abs(n) for n in squashed_tar.getnames()]
+    for marker, marker_file in markers.items():
+        actual_file = marker.name.replace(".wh.", "")
+        normalized_file = normalize_abs(actual_file)
+        # Skip if on a symlink path
+        if _file_should_be_skipped(normalized_file, added_symlinks):
+            continue
+        # Skip if it was already added for some reason
+        if normalized_file in existing_files:
+            continue
+        # Decide if we need to add it based on files present in preserved layers
+        should_add = False
+        if files_in_layers:
+            for files in files_in_layers.values():
+                if normalized_file in files:
+                    should_add = True
+                    break
+        else:
+            should_add = True
+        if should_add:
+            # AUFS whiteouts are usually hardlinks; recreate as a regular file entry
+            squashed_tar.addfile(tarfile.TarInfo(name=marker.name), marker_file)
+            existing_files.append(normalize_abs(marker.name))
 
 
 def squash_layers(
@@ -127,6 +217,16 @@ def squash_layers(
         for layer in skipped_files:
             for member, content in layer.values():
                 _add_file(member, content, squashed_tar, squashed_files, added_symlinks)
+
+        # After assembling files, re-add necessary whiteout markers based on preserved layers
+        if real_layers_to_keep:
+            files_in_layers_to_keep = _files_in_layers(
+                old_root, oci, real_layers_to_keep
+            )
+            _reduce_markers(skipped_markers)
+            _add_markers(
+                skipped_markers, squashed_tar, files_in_layers_to_keep, added_symlinks
+            )
 
         for tar in reading_layers:
             tar.close()

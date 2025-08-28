@@ -70,7 +70,9 @@ def update_config_and_history(
     ]
     # Append history entry for squashed operation
     history = {"comment": comment or "Squashed layers", "created": created}
-    # Note: we do not set empty_layer here; the presence of new diff_id implies non-empty
+    if not new_diff_ids:
+        # No real squashed tar created; mark as empty layer to keep history consistent
+        history["empty_layer"] = True
     metadata.setdefault("history", []).append(history)
     return metadata
 
