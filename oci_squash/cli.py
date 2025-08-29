@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 import shutil
 from pathlib import Path
 
@@ -16,7 +15,6 @@ from .formats import (
     write_repositories,
 )
 from .metadata import (
-    compute_chain_ids,
     compute_diff_ids,
     update_config_and_history,
     write_config_and_get_image_id,
@@ -115,7 +113,8 @@ def run():
         for lid in to_keep:
             if lid.startswith("<missing-"):
                 continue
-            p = fmt_layer_tar_path(new_dir, meta.oci, lid)
+            # We always write Docker-style layers (<digest>/layer.tar) in the output
+            p = fmt_layer_tar_path(new_dir, False, lid)
             if p and p.exists():
                 moved_paths.append(p)
 
