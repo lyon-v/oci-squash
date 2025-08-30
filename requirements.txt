@@ -1,0 +1,4 @@
+# Project has no runtime third-party dependencies; uses Python standard library only
+# Added for packaging a standalone binary
+pyinstaller
+
