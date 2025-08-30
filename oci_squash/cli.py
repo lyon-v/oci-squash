@@ -53,7 +53,7 @@ def parse_args():
         "-m", "--message", default="", help="Commit message for the new image"
     )
     p.add_argument("--tmp-dir", help="Work directory to use (kept if provided)")
-    p.add_argument("--output-path", help="Output tar path for the squashed image")
+    p.add_argument("-o", "--output-path", help="Output tar path for the squashed image")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     return p.parse_args()
 
@@ -162,10 +162,28 @@ def run():
         log.info(f"Exporting to: {output_path}")
         archive.pack(new_dir, output_path)
         log.info(f"Done. New image id: {image_id}")
+        # Size comparison (compressed tar sizes)
+        try:
+            in_sz = image_tar.stat().st_size
+            out_sz = Path(output_path).stat().st_size
+            in_mb = in_sz / 1024 / 1024
+            out_mb = out_sz / 1024 / 1024
+            log.info("Original tar size: %.2f MB" % in_mb)
+            log.info("Squashed tar size: %.2f MB" % out_mb)
+            if out_sz <= in_sz and in_sz > 0:
+                saved_pct = ((in_mb - out_mb) / in_mb) * 100.0
+                log.info("Tar size decreased by %.2f %%" % saved_pct)
+            elif out_sz > in_sz and in_sz > 0:
+                inc_pct = ((out_mb - in_mb) / in_mb) * 100.0
+                log.info("Tar size increased by %.2f %%" % inc_pct)
+        except Exception:
+            # Best-effort; do not fail the run if size check fails
+            pass
     finally:
         if args.cleanup:
             shutil.rmtree(work_root, ignore_errors=True)
             log.debug(f"Removed work root: {work_root}")
+        log.info("Squashed image Done.")
 
 
 if __name__ == "__main__":

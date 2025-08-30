@@ -29,3 +29,5 @@ testtar/
 demo/
 
 __pycache__/
+
+*.tar
