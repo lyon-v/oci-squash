@@ -23,6 +23,11 @@ TestResults.xml
 
 .cursor/
 
-demo/
 
 testtar/
+
+demo/
+
+__pycache__/
+
+*.tar

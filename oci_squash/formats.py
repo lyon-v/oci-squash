@@ -133,10 +133,9 @@ def write_docker_manifest(
         if lid.startswith("<missing-"):
             continue
         digest = lid.split(":", 1)[1] if ":" in lid else lid
-        if oci_input:
-            manifest["Layers"].append(f"blobs/sha256/{digest}")
-        else:
-            manifest["Layers"].append(f"{digest}/layer.tar")
+        # Always write Docker-style layer paths in the output tar
+        # so that `docker load` can consume it reliably.
+        manifest["Layers"].append(f"{digest}/layer.tar")
     if add_squashed_layer:
         manifest["Layers"].append("squashed/layer.tar")
     with open(root / "manifest.json", "w") as f:
@@ -165,14 +164,28 @@ def copy_preserved_layers(
         if layer_id.startswith("<missing-"):
             continue
         if oci_input:
-            digest = layer_id.split(":", 1)[1] if ":" in layer_id else layer_id
-            src = old_root / "blobs" / "sha256" / digest
-            if not src.exists():
-                continue
-            (new_root / "blobs" / "sha256").mkdir(parents=True, exist_ok=True)
-            import shutil
+            # Convert OCI blob (possibly compressed) into Docker-style <digest>/layer.tar (uncompressed)
+            import tarfile
 
-            shutil.copy2(src, new_root / "blobs" / "sha256" / digest)
+            digest = layer_id.split(":", 1)[1] if ":" in layer_id else layer_id
+            src_blob = old_root / "blobs" / "sha256" / digest
+            if not src_blob.exists():
+                continue
+            dest_dir = new_root / digest
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest_tar = dest_dir / "layer.tar"
+            # Read input tar (auto-detect compression) and re-pack uncompressed
+            with tarfile.open(src_blob, mode="r:*") as in_tar:
+                with tarfile.open(
+                    dest_tar, mode="w", format=tarfile.PAX_FORMAT
+                ) as out_tar:
+                    for member in in_tar.getmembers():
+                        # Extract fileobj if regular file, otherwise add member as-is
+                        if member.isfile():
+                            fobj = in_tar.extractfile(member)
+                            out_tar.addfile(member, fobj)
+                        else:
+                            out_tar.addfile(member)
         else:
             digest = layer_id.split(":", 1)[1] if ":" in layer_id else layer_id
             src_dir = old_root / digest
