@@ -23,6 +23,75 @@ pip install -r requirements.txt
 pyinstaller --onefile -n oci-squash -p . oci_squash/__main__.py
 ```
 
+### End-to-end Example
+
+This example squashes the last 8 layers of `lyonv/ubuntu-dev:latest`, saves to `squashed.tar`, loads it back, and shows the reduced history and tar size.
+
+1) Inspect original image history:
+```bash
+docker history lyonv/ubuntu-dev:latest
+```
+
+```text
+IMAGE          CREATED         CREATED BY                                      SIZE      COMMENT
+b23aed85a512   10 hours ago    RUN /bin/sh -c rm -f /bigfile # buildkit        0B        buildkit.dockerfile.v0
+<missing>      10 hours ago    RUN /bin/sh -c dd if=/dev/zero of=/bigfile b…   105MB     buildkit.dockerfile.v0
+<missing>      10 hours ago    WORKDIR /app && USER appuser &&     echo Ver…   0B        buildkit.dockerfile.v0
+<missing>      10 hours ago    RUN /bin/sh -c apt-get clean &&     rm -rf /…   4.1kB     buildkit.dockerfile.v0
+<missing>      10 hours ago    RUN /bin/sh -c mkdir -p /app/{conf,logs} /va…   0B        buildkit.dockerfile.v0
+<missing>      10 hours ago    RUN /bin/sh -c apt-get install -y --no-insta…   2.83MB    buildkit.dockerfile.v0
+<missing>      10 hours ago    RUN /bin/sh -c apt-get install -y --no-insta…   78.1MB    buildkit.dockerfile.v0
+<missing>      10 hours ago    RUN /bin/sh -c ln -snf /usr/share/zoneinfo/A…   58.4MB    buildkit.dockerfile.v0
+<missing>      11 months ago   sh -c sleep 36000                               4.1kB     build img
+<missing>      15 months ago   /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B        
+<missing>      15 months ago   /bin/sh -c #(nop) ADD file:e7cff353f027ecf0a…   79.5MB    
+<missing>      15 months ago   /bin/sh -c #(nop)  LABEL org.opencontainers.…   0B        
+<missing>      15 months ago   /bin/sh -c #(nop)  LABEL org.opencontainers.…   0B        
+<missing>      15 months ago   /bin/sh -c #(nop)  ARG LAUNCHPAD_BUILD_ARCH     0B        
+<missing>      15 months ago   /bin/sh -c #(nop)  ARG RELEASE                  0B        
+```
+
+2) Save, squash, and load:
+```bash
+docker save -o source.tar  lyonv/ubuntu-dev:latest
+oci-squash -f 8 -t lyonv/ubuntu-dev:squashed -m squashed -o squashed.tar source.tar
+docker load -i squashed.tar
+```
+
+Sample run output:
+```text
+2025-08-30 17:18:56,654 cli.py:106        INFO  Extracting tar: source.tar
+2025-08-30 17:18:56,859 cli.py:109        INFO  Detected format: oci
+2025-08-30 17:18:56,859 cli.py:116        INFO  Attempting to squash last 8 layers
+2025-08-30 17:18:57,965 cli.py:162        INFO  Exporting to: squashed.tar
+2025-08-30 17:18:58,393 cli.py:164        INFO  Done. New image id: sha256:1ae6a77f5b834850e9a9b2c4e3a6f8f715efb8c46af92635a49640c53e3db347
+2025-08-30 17:18:58,393 cli.py:171        INFO  Original tar size: 299.76 MB
+2025-08-30 17:18:58,393 cli.py:172        INFO  Squashed tar size: 143.15 MB
+2025-08-30 17:18:58,393 cli.py:175        INFO  Tar size decreased by 52.24 %
+2025-08-30 17:18:58,484 cli.py:186        INFO  Squashed image Done.
+
+Loaded image: lyonv/ubuntu-dev:squashed
+```
+
+3) Inspect the squashed image history:
+```bash
+docker history lyonv/ubuntu-dev:squashed
+```
+
+```text
+IMAGE          CREATED          CREATED BY                                      SIZE      COMMENT
+927444bd87b4   31 seconds ago                                                   79.9MB    squashed
+<missing>      11 months ago    sh -c sleep 36000                               4.1kB     build img
+<missing>      15 months ago    /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B        
+<missing>      15 months ago    /bin/sh -c #(nop) ADD file:e7cff353f027ecf0a…   79.5MB    
+<missing>      15 months ago    /bin/sh -c #(nop)  LABEL org.opencontainers.…   0B        
+<missing>      15 months ago    /bin/sh -c #(nop)  LABEL org.opencontainers.…   0B        
+<missing>      15 months ago    /bin/sh -c #(nop)  ARG LAUNCHPAD_BUILD_ARCH     0B        
+<missing>      15 months ago    /bin/sh -c #(nop)  ARG RELEASE                  0B        
+```
+
+In this run, the tar reduced from 299.76 MB to 143.15 MB, a 52.24% decrease.
+
 You can run it via Python:
 ```bash
 python -m oci_squash.cli -h

@@ -21,7 +21,7 @@ help:
 
 .PHONY: deps
 deps:
-	pip install -r requirements.txt
+	pip install -r oci_squash/requirements.txt
 
 .PHONY: build
 build: deps
