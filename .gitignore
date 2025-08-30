@@ -27,3 +27,5 @@ TestResults.xml
 testtar/
 
 demo/
+
+__pycache__/
