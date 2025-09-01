@@ -91,14 +91,7 @@ IMAGE          CREATED          CREATED BY                                      
 
 In this run, the tar reduced from 299.76 MB to 143.15 MB, a 52.24% decrease.
 
-You can run it via Python (local dev tree):
-```bash
-PYTHONPATH=src python -m oci_squash.cli -h
-```
-or via the built binary:
-```bash
-./dist/oci-squash -h
-```
+
 
 ### Usage
 
