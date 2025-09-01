@@ -16,11 +16,10 @@ A lightweight, dependency-free tool to squash Docker/OCI image layers from saved
 ### Installation
 
 ```bash
-git clone https://github.com/your-username/oci-squash.git
-cd oci-squash
-# Optional: build a single-file binary
-pip install -r requirements.txt
-pyinstaller --onefile -n oci-squash -p . oci_squash/__main__.py
+pip install oci-squash
+docker save -o source.tar myrepo/myimage:latest
+oci-squash -f 3 -t myrepo/myimage:squashed -o squashed.tar source.tar
+docker load -i squashed.tar
 ```
 
 ### End-to-end Example
@@ -92,9 +91,9 @@ IMAGE          CREATED          CREATED BY                                      
 
 In this run, the tar reduced from 299.76 MB to 143.15 MB, a 52.24% decrease.
 
-You can run it via Python:
+You can run it via Python (local dev tree):
 ```bash
-python -m oci_squash.cli -h
+PYTHONPATH=src python -m oci_squash.cli -h
 ```
 or via the built binary:
 ```bash
