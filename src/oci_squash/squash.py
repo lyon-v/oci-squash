@@ -115,12 +115,40 @@ def _add_markers(
             existing_files.append(normalize_abs(marker.name))
 
 
+def _add_custom_deletions(
+    squashed_tar: tarfile.TarFile, paths_to_delete: List[str]
+) -> None:
+    """Write whiteout/opaque markers for requested deletions into squashed_tar.
+
+    Files: create a ".wh.<name>" entry at the same path level.
+    Directories: create an opaque marker "<dir>/.wh..wh..opq" to hide contents.
+    """
+    if not paths_to_delete:
+        return
+    for path in paths_to_delete:
+        if not path:
+            continue
+        normalized_path = normalize_abs(path)
+        # Leading slash is not stored in tar member names
+        if normalized_path.endswith("/"):
+            dir_path = normalized_path.rstrip("/").lstrip("/")
+            marker_name = f"{dir_path}/.wh..wh..opq"
+        else:
+            marker_name = f".wh.{normalized_path.lstrip('/')}"
+        ti = tarfile.TarInfo(name=marker_name)
+        ti.size = 0
+        ti.type = tarfile.REGTYPE
+        ti.mode = 0o644
+        squashed_tar.addfile(ti)
+
+
 def squash_layers(
     layer_ids_to_squash: List[str],
     layer_ids_to_keep: List[str],
     old_root: Path,
     new_root: Path,
     oci: bool,
+    custom_deletions: Optional[List[str]] = None,
 ) -> Tuple[Optional[Path], List[str]]:
     squashed_dir = new_root / "squashed"
     squashed_dir.mkdir(parents=True, exist_ok=True)
@@ -138,6 +166,13 @@ def squash_layers(
     ]
 
     if not real_layers_to_squash:
+        # Delete-only mode: create a marker-only layer if deletions requested
+        if custom_deletions:
+            with tarfile.open(
+                squashed_tar_path, "w", format=tarfile.PAX_FORMAT
+            ) as squashed_tar:
+                _add_custom_deletions(squashed_tar, custom_deletions)
+            return squashed_tar_path, real_layers_to_keep
         return None, real_layers_to_keep
 
     with tarfile.open(
@@ -217,6 +252,10 @@ def squash_layers(
         for layer in skipped_files:
             for member, content in layer.values():
                 _add_file(member, content, squashed_tar, squashed_files, added_symlinks)
+
+        # Add custom deletion markers requested by user
+        if custom_deletions:
+            _add_custom_deletions(squashed_tar, custom_deletions)
 
         # After assembling files, re-add necessary whiteout markers based on preserved layers
         if real_layers_to_keep:

@@ -54,6 +54,18 @@ def parse_args():
     )
     p.add_argument("--tmp-dir", help="Work directory to use (kept if provided)")
     p.add_argument("-o", "--output-path", help="Output tar path for the squashed image")
+    p.add_argument(
+        "--delete-only",
+        action="store_true",
+        help="Only add deletion whiteout markers without squashing layers",
+    )
+    p.add_argument(
+        "--delete",
+        "--rm",
+        nargs="*",
+        metavar="PATH",
+        help="Paths to delete (append '/' to target directory as opaque)",
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     return p.parse_args()
 
@@ -112,11 +124,26 @@ def run():
         else:
             meta = read_docker_metadata(old_dir)
 
-        to_keep, to_squash = compute_layers_to_squash(meta.layer_ids, args.from_layer)
-        log.info(f"Attempting to squash last {len(to_squash)} layers")
+        # Mode selection: delete-only vs squash
+        if args.delete_only:
+            if not args.delete:
+                raise SquashError("--delete-only requires at least one --delete PATH")
+            to_keep = meta.layer_ids
+            to_squash = []
+            log.info(f"Delete-only mode. Will delete {len(args.delete)} paths")
+        else:
+            to_keep, to_squash = compute_layers_to_squash(
+                meta.layer_ids, args.from_layer
+            )
+            log.info(f"Attempting to squash last {len(to_squash)} layers")
 
         squashed_tar, kept_real = squash_layers(
-            to_squash, to_keep, old_dir, new_dir, meta.oci
+            to_squash,
+            to_keep,
+            old_dir,
+            new_dir,
+            meta.oci,
+            custom_deletions=(args.delete or []),
         )
 
         # Copy preserved layers into new image directory
