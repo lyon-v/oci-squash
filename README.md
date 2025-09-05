@@ -1,12 +1,12 @@
 ## OCI-Squash - Standalone Docker/OCI Image Layer Squashing Tool
 
-A lightweight, dependency-free tool to squash Docker/OCI image layers from saved tar archives. It works fully offline (no Docker daemon required) and produces Docker-loadable tar output.
+A lightweight, dependency-free tool to squash Docker/OCI image layers from saved tar archives, producing Docker-loadable tar output.
 
 ### Features
 
 - **Zero Dependencies**: Pure Python standard library at runtime
 - **Docker & OCI Support**: Auto-detects both formats; handles nested OCI indexes
-- **Standalone**: Works on image tar files without Docker daemon
+- **Direct Tar Processing**: Operates on saved image tar files
 - **Docker-loadable Output**: Always emits Docker-style layers for reliable `docker load`
 - **Metadata Preservation**: Maintains config/history and computes correct `diff_ids`
 - **Whiteout Handling**: Properly reinjects marker files; supports opaque dirs
